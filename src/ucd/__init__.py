@@ -53,7 +53,7 @@ required character attributes are "cp" and anything needed by the calling proces
 
 import array, pickle, pprint
 import xml.etree.ElementTree as et
-import os, bz2, zipfile, io
+import os, bz2, zipfile, io, sys
 import urllib.request
 from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
@@ -214,6 +214,24 @@ def _rebuild_ucd(items, enums):
     obj.enums = enums
     return obj
 
+def _userroot():
+    if sys.platform == 'win32':
+        import ctypes
+        try:
+            return ctypes.windll.shell32.IsUserAdmin() != 0
+        except:
+            return False
+    else:
+        return os.geteuid() == 0
+
+def _varcache():
+    if sys.platform == "win32":
+        return os.path.join(os.environ.get("ProgramData", 'C:\\ProgramData'), "python_ucd", "Cache")
+    elif sys.platform == "darwin":
+        return "/Library/Caches/python_ucd"
+    else:
+        return "/var/cache/python_ucd"
+
 def resolve_key(name):
     """ Translate the property name through the property aliases
     using fuzzy matching. Return the name itself on failure or
@@ -272,7 +290,7 @@ class UCD(list):
         if localfile is None:
             if cls.test_update(cache_period):
                 return cls.force_update()
-            localfile = cls._cache_path()
+            localfile, _ = cls._cache_path()
         if not os.path.exists(localfile):
             res = list.__new__(cls)
         elif localfile.endswith(".bz2"):
@@ -316,18 +334,18 @@ class UCD(list):
 
     @classmethod
     def _cache_path(cls):
-        if os.getuid() == 0:
-            cache_dir = "/var/cache/python_ucd"
+        if _userroot():
+            cache_dir = _varcache()
         else:
             cache_dir = platformdirs.user_cache_dir("python_ucd")
         os.makedirs(cache_dir, exist_ok=True)
         res = os.path.join(cache_dir, "ucdata_pickle.bz2")
         if os.path.exists(res):
-            return res
+            return res, res
         res2 = "/var/cache/python_ucd/ucdata_pickle.bz2"
         if os.path.exists(res2):
-            return res2
-        return res
+            return res2, res
+        return res, res
 
     @classmethod
     def test_update(cls, cache_period):
@@ -336,7 +354,7 @@ class UCD(list):
         it's current (no network call). Otherwise does a HEAD request; if
         the remote isn't newer, touches the cache file's mtime to reset
         the clock and returns False."""
-        cache_path = cls._cache_path()
+        cache_path, _ = cls._cache_path()
         if not os.path.exists(cache_path):
             return True
 
@@ -354,7 +372,10 @@ class UCD(list):
         if remote_lm and parsedate_to_datetime(remote_lm) > mtime:
             return True
 
-        os.utime(cache_path, None)
+        try:
+            os.utime(cache_path, None)
+        except PermissionError:
+            pass
         return False
 
     @classmethod
@@ -371,7 +392,7 @@ class UCD(list):
                 enums = obj._preproc(inf)
             with z.open(firstf) as inf:
                 obj._loadxml(inf, enums=enums)
-        obj.save(cls._cache_path())
+        obj.save(cls._cache_path()[1])
         return obj
 
     def _loadxml(self, fh, enums=None):
