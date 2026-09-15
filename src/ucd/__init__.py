@@ -316,9 +316,18 @@ class UCD(list):
 
     @classmethod
     def _cache_path(cls):
-        cache_dir = platformdirs.user_cache_dir("python_ucd")
+        if os.getuid() == 0:
+            cache_dir = "/var/cache/python_ucd"
+        else:
+            cache_dir = platformdirs.user_cache_dir("python_ucd")
         os.makedirs(cache_dir, exist_ok=True)
-        return os.path.join(cache_dir, "ucdata_pickle.bz2")
+        res = os.path.join(cache_dir, "ucdata_pickle.bz2")
+        if os.path.exists(res):
+            return res
+        res2 = "/var/cache/python_ucd/ucdata_pickle.bz2"
+        if os.path.exists(res2):
+            return res2
+        return res
 
     @classmethod
     def test_update(cls, cache_period):
