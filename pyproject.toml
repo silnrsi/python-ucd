@@ -1,5 +1,5 @@
 [build-system]
-requires = ["setuptools>=62.0", "wheel"]
+requires = ["setuptools>=64.0", "wheel", "platformdirs"]
 build-backend = "setuptools.build_meta"
 
 [project]
@@ -15,10 +15,9 @@ classifiers = [
    "Intended Audience :: Developers",
    "Topic :: Text Processing :: Markup"
    ]
-requires-python = ">=3.8"
+requires-python = ">=3.9"
 #dynamic = ["version"]
-
-# dependencies = [ ]
+dependencies = ["platformdirs"]
 
 # [project.optional-dependencies]
 # dev = [ ]
@@ -27,12 +26,11 @@ requires-python = ">=3.8"
 Home-Page = "https://github.com/silnrsi/python-ucd"
 
 # [tool.setuptools_scm]
-
 [tool.setuptools.packages.find]
 where = ["src"]
 
-#[tool.setuptools.package-data]
-#usfmtc = ["*.rng", "*.vrs"]
+[tool.setuptools.package-data]
+ucd = ["data/ucdata_v*.pickle.bz2"]
 
 #[tool.setuptools.data-files]
 #"" = ["tests/*.usfm"]
@@ -47,4 +45,4 @@ where = ["src"]
 universal = true
 
 [project.scripts]
-ucdinfo = "ucd:main"
+ucdinfo = "ucd.ucd:main"
