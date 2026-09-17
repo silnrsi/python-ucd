@@ -60,7 +60,7 @@ from email.utils import parsedate_to_datetime
 import platformdirs
 from .cache import CacheManager
 
-__all__ = ['get_ucd', 'find_ucd', 'get_enums', 'get_info']
+__all__ = ['UCD', 'get_ucd', 'find_ucd', 'get_enums', 'get_info']
 
 FORMAT_VERSION = "1"
 
@@ -374,7 +374,7 @@ class UCD(list):
 
     @classmethod
     def _cache_filename(cls):
-        return f"ucdata_pickle_{FORMAT}.bz2" 
+        return f"ucdata_pickle_{FORMAT_VERSION}.bz2"
 
     @classmethod
     def _bundled_path(cls):
