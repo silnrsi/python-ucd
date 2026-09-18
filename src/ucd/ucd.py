@@ -51,7 +51,7 @@ required character attributes are "cp" and anything needed by the calling proces
 
 """
 
-import array, pickle, pprint
+import pickle, pprint
 import xml.etree.ElementTree as et
 import os, bz2, zipfile, io, sys, re
 import urllib.request
@@ -346,6 +346,11 @@ class UCD(list):
         )
 
     @classmethod
+    def force_update(cls):
+        cache = cls._make_cache()
+        return cache.force_update()
+
+    @classmethod
     def build_from_remote(cls):
         """Fetch the remote zip and return a fresh instance. Touches no cache;
         called by CacheManager.force_update / the build hook."""
@@ -564,7 +569,6 @@ def main():
     elif args.value and args.property:
         print(" ".join("%04X" % x for x in find_ucd(args.property, args.value)))
     elif args.metadata:
-        print(f"metadata={args.metadata}")
         ucd = _get_local_ucd()
         for k, v in ucd.metadata.items():
             if args.metadata == "*" or k == args.metadata:
