@@ -495,7 +495,7 @@ class UCD(list):
             except ValueError:
                 return []
         else:
-            enumval = val
+            enumval = val.lower() in ("t", "true", "1", "yes", "y") if isinstance(val, str) else val
         return [cp for cp in range(len(self)) if self[cp] is not None and key in self[cp] and self[cp][key] == enumval]
 
 
