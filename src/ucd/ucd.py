@@ -53,7 +53,7 @@ required character attributes are "cp" and anything needed by the calling proces
 
 import array, pickle, pprint
 import xml.etree.ElementTree as et
-import os, bz2, zipfile, io, sys
+import os, bz2, zipfile, io, sys, re
 import urllib.request
 from datetime import datetime, timezone, timedelta
 from email.utils import parsedate_to_datetime
@@ -62,7 +62,7 @@ from .cache import CacheManager
 
 __all__ = ['UCD', 'get_ucd', 'find_ucd', 'get_enums', 'get_info']
 
-FORMAT_VERSION = "1"
+FORMAT_VERSION = "0.1"
 
 # Unicode data xml attributes
 _binfieldnames = """AHex Alpha Bidi_C Bidi_M Cased CE CI Comp_Ex CWCF CWCM CWKCF CWL CWT CWU
@@ -211,11 +211,11 @@ for _alias, _canon in _property_extras.items():
 
 _fieldnames = {v:k.replace("_", " ") for k, v in _property_aliases.items()}
 
-def _rebuild_ucd(items, enums, ucd_version=None):
+def _rebuild_ucd(items, enums, metadata={}):
     obj = list.__new__(UCD)
     obj.extend(items)
     obj.enums = enums
-    obj.ucd_version = ucd_version
+    obj.metadata = metadata
     return obj
 
 def _userroot():
@@ -299,7 +299,7 @@ class UCD(list):
             if obj is None:
                 obj = list.__new__(cls)
                 obj.enums = {}
-                obj.ucd_version = None
+                obj.metadata = {}
             return obj
         # explicit file: .xml/.zip are parsed in __init__; a pickled .bz2
         # is loaded here so __init__ can no-op on it.
@@ -309,12 +309,12 @@ class UCD(list):
                 return loaded
         obj = list.__new__(cls)
         obj.enums = {}
-        obj.ucd_version = None
+        obj.umetadata = {}
         return obj
 
     def __init__(self, localfile=None, cache_period=30):
-        if not hasattr(self, "ucd_version"):
-            self.ucd_version = None
+        if not hasattr(self, "metadata"):
+            self.metadata = {}
         if localfile is None or localfile.endswith(".bz2"):
             return
         elif localfile.endswith(".xml"):
@@ -332,7 +332,7 @@ class UCD(list):
 
     def __reduce__(self):
         return (_rebuild_ucd,
-                (list(self), self.enums, getattr(self, "ucd_version", None)))
+                (list(self), self.enums, getattr(self, "metadata", {})))
 
     @classmethod
     def _make_cache(cls, cache_period=30):
@@ -353,7 +353,7 @@ class UCD(list):
         with urllib.request.urlopen(cls._remote_url) as resp:
             data = resp.read()
         obj = list.__new__(cls)
-        obj.ucd_version = None
+        obj.metadata = {}
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             firstf = z.namelist()[0]
             with z.open(firstf) as inf:
@@ -470,7 +470,7 @@ class UCD(list):
             enums = {}
             for k, v in self.enums.items():
                 enums[k] = {x: i for i, x in enumerate(v)}
-        for (ev, e) in et.iterparse(fh, events=['start']):
+        for (ev, e) in et.iterparse(fh, events=['start', 'end']):
             if ev == 'start' and e.tag.endswith('char'):
                 d = dict(e.attrib)
                 if 'cp' in d:
@@ -500,6 +500,11 @@ class UCD(list):
                     self.extend([None] * (lasti - len(self) + 1))
                 for i in range(firsti, lasti+1):
                     self[i] = dat
+            elif ev == 'end' and e.tag.endswith("description"):
+                if e.text is None:
+                    continue
+                self.metadata['description'] = e.text
+                self.metadata['ucdversion'] = re.sub(r"^.*?Unicode\s+([\d.]+).*?$", r"\1", e.text)
         return self
 
     def _preproc(self, filename):
@@ -610,6 +615,7 @@ def main():
     parser.add_argument("-e","--enum",help="Enum property to list values")
     parser.add_argument("-x","--extend",help="XML file to extend properties")
     parser.add_argument("-r","--reload",action='store_true',help="Forces an update of the database from Unicode")
+    parser.add_argument("-m","--metadata",help="Query metadata key")
     args = parser.parse_args()
 
     if args.reload:
@@ -634,7 +640,9 @@ def main():
         print("\n".join(get_enums(args.enum)))
     elif args.value and args.property:
         print(" ".join("%04X" % x for x in find_ucd(args.property, args.value)))
-    else:
+    elif args.metadata:
+        print("{}: {}".format(args.metadata, _get_local_ucd().metadata.get(args.metadata, "")))
+    elif not args.reload:
         print("I don't know what to do. Try ucdinfo 0041 as a demo")
 
 if __name__ == "__main__":
