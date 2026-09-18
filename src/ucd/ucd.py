@@ -356,10 +356,11 @@ class UCD(list):
         obj.metadata = {}
         with zipfile.ZipFile(io.BytesIO(data)) as z:
             firstf = z.namelist()[0]
+            finfo = z.getinfo(firstf)
             with z.open(firstf) as inf:
                 enums = obj._preproc(inf)
             with z.open(firstf) as inf:
-                obj._loadxml(inf, enums=enums)
+                obj._loadxml(inf, enums=enums, file_date=finfo.date_time)
         return obj
 
     def save(self, localfile):
@@ -383,89 +384,13 @@ class UCD(list):
             p = files("ucd") / "data" / cls._cache_filename()
             return str(p) if p.is_file() else None
         except (ModuleNotFoundError, FileNotFoundError, TypeError):
-            return Noe
+            return None
 
-    @classmethod
-    def _cache_path(cls):
-        fname = cls._cache_filename()
-        if _userroot():
-            cache_dirs = [_varcache()]
-        else:
-            cache_dirs = [platformdirs.user_cache_dir("python_ucd")]
-            cache_dirs.append("/var/cache/python_ucd")
-        read_path = None
-        for d in cache_dirs:
-            p = os.path.join(d, fname)
-            if os.path.exists(p):
-                read_path = p
-                break
-        write_dir = cache_dirs[0]
-        try:
-            os.makedirs(cache_dir, exist_ok=True)
-        except OSError:
-            pass
-        write_path = os.path.join(cache_dir, fname)
-        return read_path, write_path
-
-    @classmethod
-    def _cleanup_old_caches(cls, cache_dir):
-        keep = cls._cache_filename()
-        patterns = ["ucdata_pickle_*.bz2", "ucdata_pickle.bz2"]
-        for pat in patterns:
-            patpath = os.path.join(cache_dir, pat)
-            for p in glob.glob(patpath):
-                base = os.path.basename(p)
-                if base == keep:
-                    continue
-                try:
-                    os.remove(path)
-                except OSError:
-                    pass
-
-    @classmethod
-    def test_update(cls, cache_period):
-        """cache_period is in days. Returns True if the cache needs
-        updating. If the cache file is younger than cache_period, assumes
-        it's current (no network call). Otherwise does a HEAD request; if
-        the remote isn't newer, touches the cache file's mtime to reset
-        the clock and returns False."""
-        cache_path, _ = cls._cache_path()
-        if not os.path.exists(cache_path):
-            return True
-
-        mtime = datetime.fromtimestamp(os.path.getmtime(cache_path), tz=timezone.utc)
-        if datetime.now(timezone.utc) - mtime < timedelta(days=cache_period):
-            return False
-
-        req = urllib.request.Request(cls._remote_url, method="HEAD")
-        try:
-            with urllib.request.urlopen(req) as resp:
-                remote_lm = resp.headers.get("Last-Modified")
-        except urllib.error.URLError:
-            return False
-
-        if remote_lm and parsedate_to_datetime(remote_lm) > mtime:
-            return True
-
-        try:
-            os.utime(cache_path, None)
-        except PermissionError:
-            pass
-        return False
-
-    @classmethod
-    def force_update(cls):
-        """Unconditionally fetch remote data, save to cache and clean up stale files"""
-        obj = cls.build_from_remote()
-        _, write_path = cls._cache_path()
-        try:
-            obj.save(write_path)
-            cls._cleanup_old_caches(os.path.direname(write_path))
-        except OSError:
-            pass
-        return obj
-
-    def _loadxml(self, fh, enums=None):
+    def _loadxml(self, fh, enums=None, file_date=None):
+        self.metadata['filename'] = getattr(fh, 'name', None)
+        if file_date is not None:
+            dt = datetime(*file_date)
+            self.metadata['filetime'] = dt.strftime("%Y-%m-%d %H:%M:%S %Z %z")
         if enums is None:
             enums = {}
             for k, v in self.enums.items():
@@ -501,10 +426,8 @@ class UCD(list):
                 for i in range(firsti, lasti+1):
                     self[i] = dat
             elif ev == 'end' and e.tag.endswith("description"):
-                if e.text is None:
-                    continue
                 self.metadata['description'] = e.text
-                self.metadata['ucdversion'] = re.sub(r"^.*?Unicode\s+([\d.]+).*?$", r"\1", e.text)
+                self.metadata['ucdversion'] = re.sub(r"^.*?Unicode\s+([\d.]+).*?$", r"\1", e.text) if e.text is not None else None
         return self
 
     def _preproc(self, filename):
@@ -641,7 +564,11 @@ def main():
     elif args.value and args.property:
         print(" ".join("%04X" % x for x in find_ucd(args.property, args.value)))
     elif args.metadata:
-        print("{}: {}".format(args.metadata, _get_local_ucd().metadata.get(args.metadata, "")))
+        print(f"metadata={args.metadata}")
+        ucd = _get_local_ucd()
+        for k, v in ucd.metadata.items():
+            if args.metadata == "*" or k == args.metadata:
+                print("{}: {}".format(k, v))
     elif not args.reload:
         print("I don't know what to do. Try ucdinfo 0041 as a demo")
 
