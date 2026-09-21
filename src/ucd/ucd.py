@@ -60,7 +60,7 @@ from email.utils import parsedate_to_datetime
 import platformdirs
 from .cache import CacheManager
 
-__all__ = ['UCD', 'get_ucd', 'find_ucd', 'get_enums', 'get_info']
+__all__ = ['UCD', 'get_ucd', 'find_ucd', 'get_enums', 'get_info', 'loadxml']
 
 FORMAT_VERSION = "0.1"
 
