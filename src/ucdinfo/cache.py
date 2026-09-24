@@ -53,7 +53,7 @@ def _varcache():
 
 class CacheManager:
     def __init__(self, name, format_version, remote_url, builder,
-                 cache_period=30, package=None, subdir="python_ucd"):
+                 cache_period=30, package="ucdinfo", subdir="python_ucd"):
         """
         name          basename for the cache file, e.g. "ucdata"
         format_version integer owned by the content class; changes the filename
@@ -212,7 +212,7 @@ class CacheManager:
         if path is not None:
             try:
                 return self._load_file(path)
-            except (OSError, pickle.UnpickleError):
+            except (OSError, pickle.PickleError):
                 pass
 
         if not self._offline():

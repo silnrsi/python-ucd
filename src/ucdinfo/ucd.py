@@ -342,7 +342,6 @@ class UCD(list):
             remote_url=cls._remote_url,
             builder=cls.build_from_remote,
             cache_period=cache_period,
-            package="ucd",
         )
 
     @classmethod
