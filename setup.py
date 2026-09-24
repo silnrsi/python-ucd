@@ -14,7 +14,7 @@ class build_py_with_data(build_py):
             return
 
         sys.path.insert(0, self.build_lib)
-        from ucd import UCD
+        from ucdinfo import UCD
         out = os.path.join(pkg_dir, UCD._cache_filename())
         self.announce("Fetching UCD data for wheel...", level=2)
         UCD.build_from_remote().save(out)

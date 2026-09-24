@@ -6,7 +6,7 @@ This module contains most of the ucd information for every character in Unicode.
 
 SYNOPSIS:
 
-    from ucd import get_ucd, get_info, find_ucd, get_enums
+    from ucdinfo import get_ucd, get_info, find_ucd, get_enums
     print(get_ucd(0x0041, 'scx'))
     print(get_info(0x0041))
     print(get_enums("indic position"))
@@ -17,7 +17,7 @@ Note cjk properties are not supported for space reasons.
 If you want to use your own data file (perhaps the module data is stale) the use
 the object interface:
 
-    from ucd import UCD
+    from ucdinfo import UCD
     myucd = UCD(localfile="ucd.nounihan.flat.zip")   # localfile falls back to bundled data
     print(myucd.get(0x0041, 'scx'))
 
@@ -28,12 +28,12 @@ full property name from that list.
 For characters not yet in Unicode, data for additional characters can
 be temporarily appended to the bundled data:
 
-    from ucd import get_ucd, loadxml
+    from ucdinfo import get_ucd, loadxml
     loadxml("extra-ucd.xml")
 
 or, with the object interface:
 
-    from ucd import UCD
+    from ucdinfo import UCD
     myucd = UCD().loadxml("extra-ucd.xml")
 
 The named file must be coded in the same form as the "flat" UCD XML data, though the only
@@ -62,7 +62,7 @@ from .cache import CacheManager
 
 __all__ = ['UCD', 'get_ucd', 'find_ucd', 'get_enums', 'get_info', 'loadxml']
 
-FORMAT_VERSION = "0.1"
+FORMAT_VERSION = "0.2"
 
 # Unicode data xml attributes
 _binfieldnames = """AHex Alpha Bidi_C Bidi_M Cased CE CI Comp_Ex CWCF CWCM CWKCF CWL CWT CWU

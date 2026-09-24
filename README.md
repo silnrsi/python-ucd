@@ -9,7 +9,7 @@ This module contains most of the ucd information for every character in Unicode.
 ## Usage
 
 ```python
-    from ucd import get_ucd, get_info, find_ucd, get_enums
+    from ucdinfo import get_ucd, get_info, find_ucd, get_enums
     print(get_ucd(0x0041, 'scx'))
     print(get_info(0x0041))
     print(get_enums("indic position"))
@@ -22,7 +22,7 @@ If you want to use your own data file (perhaps the module data is stale) the use
 the object interface:
 
 ```python
-    from ucd import UCD
+    from ucdinfo import UCD
     myucd = UCD(localfile="ucd.nounihan.flat.zip")   # localfile falls back to bundled data
     print(myucd.get(0x0041, 'scx'))
 ```
@@ -35,14 +35,14 @@ For characters not yet in Unicode, data for additional characters can
 be temporarily appended to the bundled data:
 
 ```python
-    from ucd import get_ucd, loadxml
+    from ucdinfo import get_ucd, loadxml
     loadxml("extra-ucd.xml")
 ```
 
 or, with the object interface:
 
 ```python
-    from ucd import UCD
+    from ucdinfo import UCD
     myucd = UCD().loadxml("extra-ucd.xml")
 ```
 
