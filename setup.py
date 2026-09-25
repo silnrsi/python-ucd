@@ -12,7 +12,7 @@ class build_py_with_data(build_py):
         # Editable installs (setuptools >= 64) don't populate build_lib the
         # normal way -- write directly into the source tree instead so the
         # editable-installed package can actually find the data.
-        base_dir = os.path.dirname(os.path.abspath(__file__))
+        base_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "src")
         if getattr(self, "editable_mode", False):
             pkg_dir = os.path.join(base_dir, "ucdinfo", "data")
             src_root = base_dir
@@ -25,13 +25,14 @@ class build_py_with_data(build_py):
         if src_root not in sys.path:
             sys.path.insert(0, src_root)
 
+        print(f"{pkg_dir=}, {src_root=}")
         try:
             from ucdinfo import UCD
             out = os.path.join(pkg_dir, UCD._cache_filename())
             self.announce("Fetching UCD data...", level=2)
             UCD.build_from_remote().save(out)
             self.announce(f"Wrote {out}", level=2)
-        except ModuleNotFoundError:
+        except (ModuleNotFoundError, ImportError):
             pass
 
 setup(cmdclass={"build_py": build_py_with_data})
