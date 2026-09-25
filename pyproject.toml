@@ -49,3 +49,4 @@ universal = true
 [project.scripts]
 ucdinfo = "ucdinfo.ucd:main"
 ducetinfo = "ucdinfo.ducet:main"
+uax53info = "ucdinfo.uax53:main"
