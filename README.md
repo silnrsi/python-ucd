@@ -1,12 +1,15 @@
-# ucd Module
+# ucdinfo Module
 
 ## Summary
 
-A wrapper module around the Unicode Character Database which dynamically caches the latest data, compresses and gives access to nearly all the UCD data
+This module contains various modules for interacting with Unicode data:
 
-This module contains most of the ucd information for every character in Unicode.
+- **ucd** Provides access to nearly all the properties and codepoints in the
+  UCD. CJK is excluded for space reasons
+- **ducet** Gives a ducet sort key from a string
+- **uax53** Applies UAX53 Arabic ordering to a string
 
-## Usage
+## ucd Usage
 
 ```python
     from ucdinfo import get_ucd, get_info, find_ucd, get_enums
@@ -61,3 +64,27 @@ required character attributes are "cp" and anything needed by the calling proces
     </ucd>
 ```
 
+## ducet Usage
+
+Just as the ucd module keeps its data up to date, so does the ducet module.
+
+```python
+    from ucdinfo import get_sortkey, load_ducet
+    sortkey = get_sortkey("A\u0300")
+    print(str(sortkey))
+    load_ducet("myallkeys.txt")     # to override the latest default
+```
+
+A SortKey is an enhanced list of keys. Lists can be compared to give collation
+ordering. A SortKey has attributes .primary, .secondary, .tertiary for the 3
+subkeys.
+
+## uax53 Usage
+
+This module has no data but uses the ucd module
+
+```python
+    from ucdinfo import uax53
+    res = uax53("\u0628\u064E\u0651\u0654")
+    res == "\u0628\u0654\u0651\u064E"
+```
