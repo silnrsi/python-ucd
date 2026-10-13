@@ -27,11 +27,12 @@ class build_py_with_data(build_py):
 
         print(f"{pkg_dir=}, {src_root=}")
         try:
-            from ucdinfo import UCD
-            out = os.path.join(pkg_dir, UCD._cache_filename())
-            self.announce("Fetching UCD data...", level=2)
-            UCD.build_from_remote().save(out)
-            self.announce(f"Wrote {out}", level=2)
+            from ucdinfo import UCD, DUCET
+            for cls in (UCD, DUCET):
+                out = os.path.join(pkg_dir, cls._cache_filename())
+                self.announce(f"Fetching {cls.__name__} data...", level=2)
+                cls.build_from_remote().save(out)
+                self.announce(f"Wrote {out}", level=2)
         except (ModuleNotFoundError, ImportError):
             pass
 

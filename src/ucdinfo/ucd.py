@@ -339,8 +339,8 @@ class UCD(list):
         return CacheManager(
             name="ucdata",
             format_version=FORMAT_VERSION,
-            remote_url=cls._remote_url,
             builder=cls.build_from_remote,
+            version_of=lambda o: getattr(o, "metadata", {}).get("ucdversion"),
             cache_period=cache_period,
         )
 
@@ -379,16 +379,7 @@ class UCD(list):
 
     @classmethod
     def _cache_filename(cls):
-        return f"ucdata_pickle_{FORMAT_VERSION}.bz2"
-
-    @classmethod
-    def _bundled_path(cls):
-        try:
-            from importlib.resources import files
-            p = files("ucd") / "data" / cls._cache_filename()
-            return str(p) if p.is_file() else None
-        except (ModuleNotFoundError, FileNotFoundError, TypeError):
-            return None
+        return cls._make_cache().filename()
 
     def _loadxml(self, fh, enums=None, file_date=None):
         self.metadata['filename'] = getattr(fh, 'name', None)

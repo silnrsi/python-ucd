@@ -1,11 +1,11 @@
 import unittest
-import ucd
+import ucdinfo
 
 
 class Tests(unittest.TestCase):
 
     def test_simple(self):
-        res = ucd.get_ucd(0x0041, "gc")
+        res = ucdinfo.get_ucd(0x0041, "gc")
         self.assertEqual(res, "Lu")
 
 

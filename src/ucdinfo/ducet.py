@@ -74,8 +74,8 @@ class DUCET(dict):
         return CacheManager(
             name="ducetdata",
             format_version=FORMAT_VERSION,
-            remote_url=cls._remote_url,
             builder=cls.build_from_remote,
+            version_of=lambda o: getattr(o, "metadata", {}).get("version"),
             cache_period=cache_period,
         )
 
@@ -108,22 +108,16 @@ class DUCET(dict):
 
     @classmethod
     def _cache_filename(cls):
-        return f"ducetdata_pickle_{FORMAT_VERSION}.bz2"
-
-    @classmethod
-    def _bundled_path(cls):
-        try:
-            from importlib.resources import files
-            p = files("ucdinfo") / "data" / cls._cache_filename()
-            return str(p) if p.is_file() else None
-        except (ModuleNotFoundError, FileNotFoundError, TypeError):
-            return None
+        return cls._make_cache().filename()
 
     def _loadducet(self, inf, file_date=None):
         self.implicits = []
         for l in inf.readlines():
             line = l.split("#", 1)[0].rstrip()
-            if not line or line.startswith("@version"):
+            if not line:
+                continue
+            if line.startswith("@version"):
+                self.metadata['version'] = line.split(None, 1)[1].strip()
                 continue
             if line.startswith("@implicitweights "):
                 chrange, base = line[17:].split(";")

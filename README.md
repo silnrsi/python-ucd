@@ -21,6 +21,23 @@ This module contains various modules for interacting with Unicode data:
 
 Note cjk properties are not supported for space reasons.
 
+### Data freshness and caching
+
+The module ships with pre-built data. On first use this is checked against the
+current Unicode release (a single small request to unicode.org). If it is
+current it is copied to a per-user cache and not checked again for 30 days; if
+it is out of date, fresh data is downloaded and cached. Without network access
+whatever local data is available is used.
+
+To never access the network (e.g. in a docker image), set:
+
+```
+UCDINFO_OFFLINE=1
+```
+
+The per-user cache is then used if there is one, otherwise the data shipped
+with the module.
+
 If you want to use your own data file (perhaps the module data is stale) the use
 the object interface:
 

@@ -4,28 +4,39 @@
 
 A content-agnostic manager for a versioned, pickled data cache with an
 offline-safe update path. Each cacheable class constructs a CacheManager,
-supplying its own name, format version, remote URL and a builder callback
-that fetches+parses a fresh instance. The manager handles path resolution,
-freshness checks, versioned filenames, cleanup of stale-format files, and
-load/save; it never inspects what it is pickling.
+supplying its own name, format version, a builder callback that
+fetches+parses a fresh instance and a version_of callback that reports
+which Unicode version an instance holds. The manager handles path
+resolution, freshness checks against the current Unicode release,
+versioned filenames, cleanup of stale-format files, and load/save; beyond
+version_of it never inspects what it is pickling.
 
     from ucd.cache import CacheManager
 
     cache = CacheManager(
         name="ucdata",
         format_version=1,
-        remote_url="http://www.unicode.org/Public/latest/ucdxml/ucd.all.flat.zip",
         builder=UCD.build_from_remote,   # callable() -> pickleable instance
-        package="ucd",                   # for importlib.resources bundle lookup
+        version_of=lambda o: o.metadata.get("ucdversion"),
+        package="ucdinfo",               # for importlib.resources bundle lookup
     )
-    obj = cache.load()                   # fresh check -> cache -> bundle -> remote
+    obj = cache.load()                   # cache -> bundle -> remote, each
+                                         # checked against the latest release
 """
 
-import os, sys, bz2, pickle, glob, re
+import os, sys, bz2, pickle, glob, re, shutil
 import urllib.request, urllib.error
 from datetime import datetime, timezone, timedelta
-from email.utils import parsedate_to_datetime
 import platformdirs
+
+# Redirects to /versions/UnicodeX.Y.Z/ for the current release; the same
+# release that the .../latest/... data URLs serve.
+LATEST_VERSION_URL = "https://www.unicode.org/versions/latest/"
+
+# Set (to anything but "" or "0") to never access the network: use the user
+# cache if there is one, else the data shipped with the module. Intended for
+# docker images etc.
+OFFLINE_ENV = "UCDINFO_OFFLINE"
 
 
 def _userroot():
@@ -40,6 +51,18 @@ def _userroot():
         return os.geteuid() == 0
 
 
+def _vtuple(v):
+    """'16.0.0' -> (16, 0, 0); None if v isn't a dotted version."""
+    if not v or not re.fullmatch(r"\d+(?:\.\d+)*", str(v)):
+        return None
+    return tuple(int(x) for x in str(v).split("."))
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, *a, **kw):
+        return None
+
+
 def _varcache():
     """System-wide cache directory for privileged installs."""
     if sys.platform == "win32":
@@ -52,24 +75,30 @@ def _varcache():
 
 
 class CacheManager:
-    def __init__(self, name, format_version, remote_url, builder,
-                 cache_period=30, package="ucdinfo", subdir="python_ucd"):
+    def __init__(self, name, format_version, builder, version_of,
+                 cache_period=30, package="ucdinfo", subdir="python_ucd",
+                 version_url=LATEST_VERSION_URL, timeout=3):
         """
         name          basename for the cache file, e.g. "ucdata"
         format_version integer owned by the content class; changes the filename
-        remote_url    where build_from_remote's data comes from (for HEAD/GET)
         builder       callable() returning a fresh, pickleable instance
-        cache_period  days before a HEAD freshness check is made
+        version_of    callable(obj) returning the Unicode version string obj
+                      holds, or None if unknown (treated as out of date)
+        cache_period  days before a cached file is rechecked against remote
         package       importlib.resources package holding bundled data, or None
         subdir        cache subdirectory name under the platform cache root
+        version_url   URL that redirects to the current release's version page
+        timeout       seconds to wait for the version check
         """
         self.name = name
         self.format_version = format_version
-        self.remote_url = remote_url
         self.builder = builder
+        self.version_of = version_of
         self.cache_period = cache_period
         self.package = package
         self.subdir = subdir
+        self.version_url = version_url
+        self.timeout = timeout
 
     # ---- naming -----------------------------------------------------------
 
@@ -77,7 +106,8 @@ class CacheManager:
         return f"{self.name}_v{self.format_version}.pickle.bz2"
 
     def _offline(self):
-        return getattr(sys, "frozen", False)
+        return (getattr(sys, "frozen", False)
+                or os.environ.get(OFFLINE_ENV, "") not in ("", "0"))
 
     # ---- path resolution --------------------------------------------------
 
@@ -123,36 +153,34 @@ class CacheManager:
 
     # ---- freshness --------------------------------------------------------
 
-    def test_update(self):
-        """True if the cache should be refreshed. Younger than cache_period ->
-        assume current (no network). Otherwise HEAD the remote; if not newer,
-        touch the cache mtime to reset the clock and return False."""
-        if self._offline():
-            return False
-        cache_path, _ = self.cache_path()
-        if cache_path is None or not os.path.exists(cache_path):
-            return True
-
-        mtime = datetime.fromtimestamp(os.path.getmtime(cache_path),
-                                       tz=timezone.utc)
-        if datetime.now(timezone.utc) - mtime < timedelta(days=self.cache_period):
-            return False
-
-        req = urllib.request.Request(self.remote_url, method="HEAD")
+    def remote_version(self):
+        """Current Unicode release as a tuple, read from the Location header
+        of version_url's redirect without following it. None if unknown."""
+        opener = urllib.request.build_opener(_NoRedirect)
+        req = urllib.request.Request(self.version_url, method="HEAD")
         try:
-            with urllib.request.urlopen(req) as resp:
-                remote_lm = resp.headers.get("Last-Modified")
-        except urllib.error.URLError:
-            return False
+            with opener.open(req, timeout=self.timeout) as resp:
+                loc = resp.headers.get("Location")
+        except urllib.error.HTTPError as e:
+            loc = e.headers.get("Location")
+        except (urllib.error.URLError, OSError):
+            return None
+        m = re.search(r"Unicode(\d+(?:\.\d+)*)", loc or "")
+        return _vtuple(m.group(1)) if m else None
 
-        if remote_lm and parsedate_to_datetime(remote_lm) > mtime:
-            return True
+    def is_current(self, obj):
+        """True if obj holds the current Unicode release, False if it is
+        older (or its version is unknown), None if the release can't be
+        determined (e.g. no network)."""
+        remote = self.remote_version()
+        if remote is None:
+            return None
+        local = _vtuple(self.version_of(obj))
+        return local is not None and local >= remote
 
-        try:
-            os.utime(cache_path, None)
-        except PermissionError:
-            pass
-        return False
+    def _recent(self, path):
+        mtime = datetime.fromtimestamp(os.path.getmtime(path), tz=timezone.utc)
+        return datetime.now(timezone.utc) - mtime < timedelta(days=self.cache_period)
 
     # ---- fetch / save / prune --------------------------------------------
 
@@ -193,31 +221,74 @@ class CacheManager:
 
     # ---- top-level load ---------------------------------------------------
 
+    def _try_load(self, path):
+        if path is None:
+            return None
+        try:
+            return self._load_file(path)
+        except (OSError, EOFError, pickle.PickleError):
+            return None
+
+    def _try_update(self, fallback):
+        try:
+            return self.force_update()
+        except (urllib.error.URLError, OSError):
+            return fallback
+
+    def _seed_cache(self):
+        """No usable cache: seed it with the bundled data if that holds the
+        current release, otherwise build from remote (force_update caches
+        it). Either way the cache period then runs from now. If the release
+        can't be determined (no network) the bundled data is used uncached,
+        so the next run tries again."""
+        bundled_path = self._bundled_path()
+        obj = self._try_load(bundled_path)
+        if self._offline():
+            return obj
+        current = self.is_current(obj) if obj is not None else False
+        if current is False:
+            return self._try_update(obj)
+        if current:
+            _, write_path = self.cache_path()
+            try:
+                shutil.copyfile(bundled_path, write_path)
+                self._cleanup_old_caches(os.path.dirname(write_path))
+            except OSError:
+                pass
+        return obj
+
     def load(self, localfile=None):
-        """Resolve and load an instance: explicit file, else fresh-if-stale
-        remote, else existing cache, else bundled data, else (if online) a
-        remote build. Returns the loaded object, or None if nothing is
-        available (caller decides how to represent an empty instance)."""
+        """Resolve and load an instance: explicit file, else the user cache,
+        seeding it first if there isn't one.
+
+        With no cache, the bundled data is checked against the current
+        Unicode release: if current it is copied into the cache, otherwise
+        fresh data is built from remote and cached. A cache file younger
+        than cache_period is used without any network access; an older one
+        is rechecked against the current release and rebuilt if out of date.
+        If the network is unavailable whatever local data exists is used.
+
+        If UCDINFO_OFFLINE is set the network is never accessed: the cache
+        is used if there is one, else the bundled data (which is then not
+        copied into the cache).
+
+        Returns the loaded object, or None if nothing is available (caller
+        decides how to represent an empty instance)."""
         if localfile is not None:
             return self._load_file(localfile) if os.path.exists(localfile) else None
 
-        if not self._offline() and self.test_update():
-            try:
-                return self.force_update()
-            except (urllib.error.URLError, OSError):
-                pass
-
         read_path, _ = self.cache_path()
-        path = read_path or self._bundled_path()
-        if path is not None:
+        obj = self._try_load(read_path)
+        if obj is None:
+            return self._seed_cache()
+        if self._offline() or self._recent(read_path):
+            return obj
+        current = self.is_current(obj)
+        if current is False:
+            return self._try_update(obj)
+        if current:
             try:
-                return self._load_file(path)
-            except (OSError, pickle.PickleError):
+                os.utime(read_path, None)
+            except OSError:
                 pass
-
-        if not self._offline():
-            try:
-                return self.force_update()
-            except (urllib.error.URLError, OSError):
-                pass
-        return None
+        return obj
